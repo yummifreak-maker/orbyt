@@ -4,3 +4,5 @@ selenium
 pandas
 requests
 python-dotenv
+python-docx
+openai
