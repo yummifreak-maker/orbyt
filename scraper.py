@@ -1,7 +1,10 @@
 import time
+import platform
 from bs4 import BeautifulSoup
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
+from webdriver_manager.chrome import ChromeDriverManager
 from config import Config
 
 class JobScraper:
@@ -9,7 +12,19 @@ class JobScraper:
         options = Options()
         options.add_argument("--disable-blink-features=AutomationControlled")
         options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
-        self.driver = webdriver.Chrome(options=options)
+        
+        # Check if running on Streamlit Cloud (Linux) vs Local (Windows/Mac)
+        if platform.system() == "Linux":
+            options.add_argument("--headless")
+            options.add_argument("--no-sandbox")
+            options.add_argument("--disable-dev-shm-usage")
+            options.add_argument("--disable-gpu")
+            options.binary_location = "/usr/bin/chromium"
+            self.driver = webdriver.Chrome(options=options)
+        else:
+            # Local Windows/Mac execution using webdriver-manager automatically
+            service = Service(ChromeDriverManager().install())
+            self.driver = webdriver.Chrome(service=service, options=options)
 
     def search_jobs(self):
         discovered_jobs = []
@@ -46,7 +61,6 @@ class JobScraper:
         except Exception:
             pass
             
-        # Fallback sample items if network/headless parsing returns empty during local testing
         if not discovered_jobs:
             discovered_jobs = [
                 {"company": "Jane Street", "title": "Quantitative Researcher - Entry Level", "link": "https://www.janestreet.com/join-jane-street/position/"},

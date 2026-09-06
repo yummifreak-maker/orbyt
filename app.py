@@ -20,9 +20,17 @@ def init_workspace_db():
             post_name TEXT,
             jd_link TEXT,
             cover_letter TEXT,
+            ats_score INTEGER,
             status TEXT DEFAULT 'Staged for Review'
         )
     ''')
+    
+    # Safely migrate existing databases if columns are missing
+    cursor.execute("PRAGMA table_info(workspace)")
+    columns = [col[1] for col in cursor.fetchall()]
+    if "ats_score" not in columns:
+        cursor.execute("ALTER TABLE workspace ADD COLUMN ats_score INTEGER")
+        
     conn.commit()
     conn.close()
 
@@ -52,11 +60,12 @@ if st.sidebar.button("🔍 Run Scraper & Stage Jobs"):
             p_name = job["title"]
             j_link = job["link"]
             cl_text = tailor.generate_cover_letter(c_name, p_name, "")
+            ats_val = tailor.calculate_ats_score(p_name, "")
             
             cursor.execute('''
-                INSERT INTO workspace (company_name, post_name, jd_link, cover_letter, status)
-                VALUES (?, ?, ?, ?, 'Staged for Review')
-            ''', (c_name, p_name, j_link, cl_text))
+                INSERT INTO workspace (company_name, post_name, jd_link, cover_letter, ats_score, status)
+                VALUES (?, ?, ?, ?, ?, 'Staged for Review')
+            ''', (c_name, p_name, j_link, cl_text, ats_val))
         conn.commit()
         conn.close()
     st.sidebar.success("New positions successfully staged!")
@@ -77,9 +86,24 @@ else:
     
     with tab1:
         st.subheader("Staged Roles Requiring Manual Evaluation")
+        tailor = ProfileTailor()
         for index, row in df.iterrows():
-            with st.expander(f"{row['company_name']} — {row['post_name']} ({row['status']})"):
+            score_val = row.get('ats_score')
+            score_str = f" | ATS Score: {score_val}%" if pd.notnull(score_val) else ""
+            with st.expander(f"{row['company_name']} — {row['post_name']} ({row['status']}){score_str}"):
                 st.markdown(f"**Job Link:** [Open Description]({row['jd_link']})")
+                
+                # Generate and offer docx download
+                doc_path = tailor.save_application_docx(row['company_name'], row['post_name'], row['cover_letter'])
+                with open(doc_path, "rb") as f:
+                    st.download_button(
+                        label="📥 Download Tailored Application (.docx)",
+                        data=f,
+                        file_name=doc_path,
+                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                        key=f"dl_{row['id']}"
+                    )
+                
                 st.markdown("**Tailored Human-Like Cover Letter:**")
                 st.text_area("Cover Letter", row['cover_letter'], height=200, key=f"cl_{row['id']}")
                 
@@ -103,4 +127,4 @@ else:
 
     with tab2:
         st.subheader("Application Tracking Matrix")
-        st.dataframe(df[["id", "company_name", "post_name", "jd_link", "status"]], use_container_width=True)
+        st.dataframe(df[["id", "company_name", "post_name", "jd_link", "ats_score", "status"]], use_container_width=True)
